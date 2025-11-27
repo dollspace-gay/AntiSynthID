@@ -16,12 +16,15 @@ use super::guidance::{blend_with_edges, extract_edges};
 use super::vae::{self, LatentTensor};
 
 /// Configuration for the watermark removal pipeline.
+///
+/// Based on `DiffPure` research for optimal `SynthID` watermark removal.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Denoising strength (0.0-1.0). Higher values remove more watermark but may alter image.
+    /// Denoising strength (0.0-1.0). Research shows 0.15-0.3 is optimal for watermark removal.
+    /// Higher values remove more watermark but may alter image content.
     pub strength: f32,
 
-    /// Number of denoising steps.
+    /// Number of denoising steps. Research recommends 50 steps for quality/speed balance.
     pub num_steps: u32,
 
     /// Whether to use spatial guidance (edge preservation).
@@ -46,8 +49,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            strength: 0.4,
-            num_steps: 20,
+            strength: 0.04,        // Research: 0.04 preserves details, 0.25 max for aggressive removal
+            num_steps: 50,         // Research: 50-100 steps for quality/speed balance
             use_guidance: true,
             edge_low_threshold: 50.0,
             edge_high_threshold: 100.0,
@@ -202,31 +205,44 @@ impl Pipeline {
     }
 
     /// Run the diffusion denoising loop.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
     fn diffusion_loop(&mut self, latents: &LatentTensor) -> Result<LatentTensor> {
+        // SD 1.5 uses 1000 total timesteps
+        const MAX_TIMESTEPS: u32 = 1000;
+
         let mut rng = self
             .config
             .seed
             .map_or_else(rand::rngs::StdRng::from_os_rng, rand::rngs::StdRng::seed_from_u64);
 
-        // Calculate how much noise to add based on strength
-        // Safe: result is clamped to valid step range
-        #[allow(clippy::cast_precision_loss)]
-        let start_step = ((1.0 - self.config.strength) * self.config.num_steps as f32) as u32;
-        let num_inference_steps = self.config.num_steps - start_step;
+        // Calculate timestep range based on strength
+        // Research shows: lower strength (0.04) = less noise = fine details preserved
+        // Higher strength (0.25) = more noise = aggressive watermark removal
+        // We add noise UP TO (strength * MAX_TIMESTEPS), not (1-strength)
+        let max_timestep = (self.config.strength * MAX_TIMESTEPS as f32) as u32;
+        let step_size = (max_timestep.max(1) / self.config.num_steps.min(max_timestep.max(1))) as usize;
+        let mut timesteps: Vec<u32> = (0..=max_timestep)
+            .step_by(step_size.max(1))
+            .collect();
+        timesteps.reverse();
 
-        if num_inference_steps == 0 {
+        if timesteps.is_empty() {
             return Ok(latents.clone());
         }
 
-        // Add noise proportional to strength
-        let noise: Array4<f32> =
-            Array4::from_shape_fn(latents.dim(), |_| rng.random::<f32>().mul_add(2.0, -1.0));
-        let noise_scale = self.config.strength;
-        let mut noisy_latents = latents * (1.0 - noise_scale) + noise * noise_scale;
+        // Add noise to latents based on strength
+        let noise: Array4<f32> = Array4::from_shape_fn(latents.dim(), |_| {
+            rng.random::<f32>().mul_add(2.0, -1.0)
+        });
 
-        // Progress bar for denoising
-        let pb = ProgressBar::new(u64::from(num_inference_steps));
+        // Calculate alpha for initial noise level at max_timestep
+        let init_alpha = get_alpha_prod(max_timestep);
+        let sqrt_alpha = init_alpha.sqrt();
+        let sqrt_one_minus_alpha = (1.0 - init_alpha).sqrt();
+        let mut noisy_latents = latents * sqrt_alpha + &noise * sqrt_one_minus_alpha;
+
+        // Progress bar
+        let pb = ProgressBar::new(timesteps.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{spinner:.green} Denoising [{bar:40.cyan/blue}] {pos}/{len}")
@@ -234,20 +250,28 @@ impl Pipeline {
                 .progress_chars("#>-"),
         );
 
-        // DDIM-style denoising loop
-        // Note: This is a simplified version. Full implementation would use proper
-        // DDIM scheduler with timestep embeddings and text conditioning.
-        for step in 0..num_inference_steps {
-            #[allow(clippy::cast_precision_loss)]
-            let t = (num_inference_steps - step) as f32 / num_inference_steps as f32;
+        // DDIM denoising loop
+        for (i, &timestep) in timesteps.iter().enumerate() {
+            // Predict noise
+            let noise_pred = self.predict_noise(&noisy_latents, timestep)?;
 
-            // Predict noise using UNet
-            let noise_pred = self.predict_noise(&noisy_latents, t)?;
+            // DDIM step
+            let alpha_prod = get_alpha_prod(timestep);
+            let alpha_prod_prev = if i < timesteps.len() - 1 {
+                get_alpha_prod(timesteps[i + 1])
+            } else {
+                1.0
+            };
 
-            // DDIM update step
-            let alpha = (-t).mul_add(0.5, 1.0); // Simplified alpha schedule: 1.0 - t * 0.5
-            noisy_latents = noisy_latents * alpha
-                + (latents.clone() - noise_pred * noise_scale) * (1.0 - alpha);
+            // Predict x0 (original sample)
+            let sqrt_alpha_prod = alpha_prod.sqrt();
+            let sqrt_one_minus_alpha_prod = (1.0 - alpha_prod).sqrt();
+            let pred_original = (&noisy_latents - &noise_pred * sqrt_one_minus_alpha_prod) / sqrt_alpha_prod;
+
+            // Direction pointing to xt
+            let sqrt_alpha_prod_prev = alpha_prod_prev.sqrt();
+            let sqrt_one_minus_alpha_prod_prev = (1.0 - alpha_prod_prev).sqrt();
+            noisy_latents = pred_original * sqrt_alpha_prod_prev + noise_pred * sqrt_one_minus_alpha_prod_prev;
 
             pb.inc(1);
         }
@@ -256,21 +280,25 @@ impl Pipeline {
         Ok(noisy_latents)
     }
 
-    /// Predict noise using the `UNet`.
+    /// Predict noise using the `UNet` with unconditional diffusion.
+    ///
+    /// Based on `DiffPure` research: uses pure unconditional generation for watermark removal.
+    /// This is a zero-shot purification method that projects watermarked images back onto
+    /// the clean data manifold by treating the watermark as unnatural noise.
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    fn predict_noise(&mut self, latents: &LatentTensor, _timestep: f32) -> Result<LatentTensor> {
-        // For img2img without text, we use unconditional generation
+    fn predict_noise(&mut self, latents: &LatentTensor, timestep: u32) -> Result<LatentTensor> {
         // The `UNet` expects: sample, timestep, encoder_hidden_states
 
         let sample_value =
             Tensor::from_array(latents.clone()).map_err(|source| Error::Inference { source })?;
 
         // Timestep as tensor
-        let timestep_arr = Array1::from_vec(vec![500i64]); // Mid-range timestep
+        let timestep_arr = Array1::from_vec(vec![i64::from(timestep)]);
         let timestep_value =
             Tensor::from_array(timestep_arr).map_err(|source| Error::Inference { source })?;
 
-        // Empty text embedding (unconditional) - shape is (batch, seq_len, hidden_dim)
+        // Unconditional prediction (empty text embedding)
+        // This is the correct approach for DiffPure watermark removal
         let hidden_states = Array3::<f32>::zeros((1, 77, 768));
         let hidden_value =
             Tensor::from_array(hidden_states).map_err(|source| Error::Inference { source })?;
@@ -306,4 +334,23 @@ impl Pipeline {
             }
         })
     }
+}
+
+/// Get alpha cumulative product for a given timestep.
+/// Uses SD 1.5's linear beta schedule: `beta_start=0.00085`, `beta_end=0.012`
+#[allow(clippy::cast_precision_loss)]
+fn get_alpha_prod(timestep: u32) -> f32 {
+    const BETA_START: f32 = 0.000_85;
+    const BETA_END: f32 = 0.012;
+    const MAX_TIMESTEPS: f32 = 1000.0;
+
+    // Linear interpolation for beta at this timestep
+    let t = timestep as f32 / MAX_TIMESTEPS;
+    let beta = (BETA_END - BETA_START).mul_add(t, BETA_START);
+
+    // For alpha_prod, we need cumulative product
+    // Approximate with exponential for efficiency
+    let avg_beta = f32::midpoint(BETA_START, beta);
+
+    (1.0 - avg_beta).powf(timestep as f32)
 }

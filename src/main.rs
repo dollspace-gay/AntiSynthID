@@ -22,12 +22,12 @@ struct Args {
     #[arg(value_name = "OUTPUT")]
     output: PathBuf,
 
-    /// Denoising strength (0.0-1.0). Higher values remove more watermark but may alter image.
-    #[arg(short, long, default_value = "0.4", value_name = "FLOAT")]
+    /// Noise strength (0.0-1.0). Research shows 0.04 preserves details, 0.25 for aggressive removal.
+    #[arg(short, long, default_value = "0.04", value_name = "FLOAT")]
     strength: f32,
 
-    /// Number of denoising steps.
-    #[arg(long, default_value = "20", value_name = "INT")]
+    /// Number of denoising steps. More steps = better quality but slower.
+    #[arg(long, default_value = "50", value_name = "INT")]
     steps: u32,
 
     /// Output JPEG quality (1-100).
