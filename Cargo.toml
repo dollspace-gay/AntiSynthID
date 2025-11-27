@@ -1,0 +1,51 @@
+[package]
+name = "antisynthid"
+version = "0.1.0"
+edition = "2024"
+description = "Remove SynthID watermarks from images using diffusion-based regeneration"
+license = "MIT"
+repository = "https://github.com/yourusername/antisynthid"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Progress and logging
+indicatif = "0.17"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ML Runtime - ONNX
+ort = { version = "2", features = ["download-binaries"] }
+
+# Image processing
+image = "0.25"
+ndarray = "0.16"
+imageproc = "0.25"
+
+# Model downloading
+reqwest = { version = "0.12", features = ["blocking", "stream"] }
+dirs = "6"
+
+# Utilities
+rand = "0.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"

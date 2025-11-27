@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir \"c:\\Users\\texas\\AntiSynthID\" /s)"
+      "Bash(dir \"c:\\Users\\texas\\AntiSynthID\" /s)",
+      "Bash(bd init:*)",
+      "Bash(bd create:*)",
+      "Bash(bd dep add:*)",
+      "Bash(bd list:*)",
+      "Bash(bd update:*)",
+      "Bash(cargo init:*)"
     ],
     "deny": [],
     "ask": []
