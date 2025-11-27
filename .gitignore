@@ -1,1 +1,13 @@
-/target
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache
+models/

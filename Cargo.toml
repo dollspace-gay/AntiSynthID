@@ -23,7 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # ML Runtime - ONNX
-ort = { version = "2", features = ["download-binaries"] }
+ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
 
 # Image processing
 image = "0.25"

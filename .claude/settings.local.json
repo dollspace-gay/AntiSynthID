@@ -7,7 +7,15 @@
       "Bash(bd dep add:*)",
       "Bash(bd list:*)",
       "Bash(bd update:*)",
-      "Bash(cargo init:*)"
+      "Bash(cargo init:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(bd close:*)",
+      "Bash(cargo build:*)",
+      "Bash(targetreleaseantisynthid.exe --help)",
+      "Bash(.targetreleaseantisynthid.exe --help)",
+      "Bash(./target/release/antisynthid.exe:*)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\":*)"
     ],
     "deny": [],
     "ask": []
