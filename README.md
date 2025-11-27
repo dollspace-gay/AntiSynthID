@@ -10,15 +10,15 @@ SynthID is Google DeepMind's invisible watermarking system designed to identify 
 
 ## How It Works
 
-AntiSynthID uses a **diffusion-based regeneration attack**:
+AntiSynthID uses **DiffPure** (Diffusion Purification), a zero-shot purification method:
 
 1. **Encode** the watermarked image to latent space using a VAE encoder
-2. **Add controlled noise** to the latent representation
-3. **Denoise** using a diffusion model (Stable Diffusion 1.5 UNet) with DDIM sampling
+2. **Add controlled noise** to the latent representation (strength parameter controls how much)
+3. **Denoise** using unconditional diffusion (Stable Diffusion 1.5 UNet) with DDIM sampling
 4. **Decode** back to image space using a VAE decoder
 5. **Optional edge guidance** to preserve sharp features
 
-The diffusion model reconstructs the image based on its training on natural images, effectively removing the watermark pattern while preserving visual content.
+The diffusion model projects the watermarked image back onto the clean data manifold by treating the watermark as unnatural noise, effectively removing it while preserving visual content.
 
 ## Installation
 
@@ -49,7 +49,7 @@ antisynthid input.jpg output.jpg
 
 ```bash
 antisynthid input.jpg output.jpg \
-  --strength 0.3 \              # Denoising strength (0.0-1.0, default: 0.3)
+  --strength 0.04 \             # Noise strength (0.0-1.0, default: 0.04)
   --steps 50 \                  # Number of diffusion steps (default: 50)
   --quality 95 \                # JPEG output quality (default: 95)
   --no-guidance \               # Disable edge preservation
@@ -59,15 +59,16 @@ antisynthid input.jpg output.jpg \
 
 ### Parameters
 
-- **`--strength`**: Controls how much the image is altered
-  - `0.0` = no change
-  - `0.3` = default, good balance
-  - `1.0` = maximum alteration
-  - Lower values preserve more detail but may be less effective at removing watermarks
+- **`--strength`**: Controls noise level added to the image (research-validated values)
+  - `0.04` = **default**, preserves fine details while removing watermarks (recommended)
+  - `0.10` = moderate watermark removal with good quality
+  - `0.25` = **maximum**, aggressive watermark removal (may introduce artifacts)
+  - **Lower values** (0.04-0.10) preserve image quality, slower processing
+  - **Higher values** (0.15-0.25) stronger watermark removal, faster but more artifacts
 
 - **`--steps`**: Number of denoising iterations
   - More steps = higher quality but slower
-  - Default: 50 (good quality/speed balance)
+  - Default: 50 (recommended quality/speed balance)
   - Try 25 for faster processing or 100 for maximum quality
 
 - **`--quality`**: JPEG output quality (1-100)
@@ -79,14 +80,19 @@ antisynthid input.jpg output.jpg \
 
 ### Examples
 
-**Quick processing** (lower quality, faster):
+**Default (recommended)** - preserves image quality:
 ```bash
-antisynthid input.jpg output.jpg --strength 0.25 --steps 25
+antisynthid input.jpg output.jpg
 ```
 
-**Maximum quality** (slower):
+**Faster processing** (moderate quality):
 ```bash
-antisynthid input.jpg output.jpg --strength 0.3 --steps 100 --quality 98
+antisynthid input.jpg output.jpg --strength 0.10 --steps 25
+```
+
+**Aggressive watermark removal** (may reduce quality):
+```bash
+antisynthid input.jpg output.jpg --strength 0.25 --steps 50
 ```
 
 **Reproducible output**:
@@ -103,7 +109,10 @@ First run will download ~4GB of ONNX models from Hugging Face:
 
 **Processing time** (after models are cached):
 - Model loading: ~8 seconds
-- Processing per image: ~30-60 seconds (depends on `--steps`)
+- Processing per image: ~60-150 seconds (depends on `--strength` and `--steps`)
+  - `strength=0.04`: ~90 seconds (50 steps)
+  - `strength=0.10`: ~140 seconds (50 steps)
+  - `strength=0.25`: ~20 seconds (50 steps)
 
 **Hardware requirements**:
 - CPU: Any modern multi-core processor
@@ -133,9 +142,9 @@ First run will download ~4GB of ONNX models from Hugging Face:
    - Scale by VAE factor (0.18215)
 
 3. **Diffusion Loop** ([`src/pipeline/diffusion.rs`](src/pipeline/diffusion.rs))
-   - Add gaussian noise based on strength parameter
-   - Iterative denoising with DDIM sampling
-   - Proper timestep scheduling (1000-step space)
+   - Add gaussian noise based on strength parameter (strength * 1000 timesteps)
+   - Iterative denoising with DDIM sampling using **unconditional** diffusion
+   - Proper timestep scheduling (1000-step space, partial traversal)
 
 4. **VAE Decoding** ([`src/pipeline/vae.rs`](src/pipeline/vae.rs))
    - Decode latents back to RGB image
@@ -155,16 +164,20 @@ Models are cached in platform-specific directories:
 
 ## Limitations
 
-1. **Quality vs. Effectiveness Tradeoff**: Lower strength values preserve more image quality but may not fully remove watermarks. Higher values are more effective but can introduce artifacts.
+1. **Quality vs. Effectiveness Tradeoff**:
+   - Lower strength values (0.04-0.10) preserve image quality but may leave traces
+   - Higher values (0.15-0.25) remove watermarks more aggressively but can introduce artifacts
+   - **Recommended**: Start with default 0.04 and increase only if needed
 
-2. **Processing Time**: Each image takes 30-60 seconds to process. Not suitable for real-time applications.
+2. **Processing Time**: Each image takes 60-150 seconds to process depending on strength. Not suitable for real-time applications. Lower strength values require more denoising steps, making them slower.
 
 3. **Image Size**: All images are processed at 512×512 internally (SD 1.5 limitation). Output is resized back to original dimensions.
 
-4. **Not a Silver Bullet**: This demonstrates a fundamental weakness in invisible watermarking, but:
-   - Results may vary depending on watermark strength
-   - Some visible artifacts may appear at high strength values
-   - Does not address all forms of image provenance
+4. **Not Perfect**: This demonstrates a fundamental weakness in invisible watermarking, but:
+   - Results vary depending on watermark strength and implementation
+   - Some artifacts may appear, especially at higher strength values
+   - This is a proof-of-concept, not production-quality software
+   - The goal is demonstrating vulnerability, not creating a flawless attack tool
 
 ## Ethical Considerations
 
@@ -238,6 +251,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## References
 
 - [SynthID: Google DeepMind's watermarking system](https://deepmind.google/technologies/synthid/)
+- [DiffPure: Diffusion Purification Against Adversarial Attacks](https://arxiv.org/abs/2205.07460)
+- [First-Place Solution to NeurIPS 2024 Invisible Watermark Removal Challenge](https://arxiv.org/abs/2508.21072)
 - [DDIM Paper: Denoising Diffusion Implicit Models](https://arxiv.org/abs/2010.02502)
 - [Stable Diffusion](https://github.com/Stability-AI/stablediffusion)
 
