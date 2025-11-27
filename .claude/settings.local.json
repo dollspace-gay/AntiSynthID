@@ -15,7 +15,21 @@
       "Bash(targetreleaseantisynthid.exe --help)",
       "Bash(.targetreleaseantisynthid.exe --help)",
       "Bash(./target/release/antisynthid.exe:*)",
-      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\":*)"
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\":*)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact2.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\output2.jpg\" --verbose)",
+      "Bash(bd ready:*)",
+      "Bash(bd show:*)",
+      "Bash(cargo doc:*)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" --help)",
+      "Bash(dir:*)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact1.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\output1_optimal.jpg\" --verbose)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact2.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\output2_optimal.jpg\" --verbose)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact1.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\output1_research_aligned.jpg\" --verbose)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact1.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\test_strength_0.10.jpg\" --strength 0.10 --verbose)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact1.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\test_strength_0.05.jpg\" --strength 0.05 --verbose)",
+      "Bash(\"c:\\Users\\texas\\AntiSynthID\\target\\release\\antisynthid.exe\" \"c:\\Users\\texas\\AntiSynthID\\test images\\synthidintact1.jpg\" \"c:\\Users\\texas\\AntiSynthID\\test images\\test_strength_0.04.jpg\" --verbose)",
+      "Bash(git add:*)",
+      "Bash(bd sync:*)"
     ],
     "deny": [],
     "ask": []
